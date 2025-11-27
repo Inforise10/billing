@@ -26,17 +26,19 @@ app.use('/api/assets', require('./routes/assets'));
 app.use('/api/settings', require('./routes/settings'));
 
 
-
 // example API route
 app.get('/api/ping', (req, res) => res.json({ ok: true }));
 
-// Serve static React build (production)
-const buildPath = path.join(__dirname, '..', 'client', 'build');
+// -------------------------------------------------
+// Serve static frontend build **UPDATED**
+// Your build output is in /dist (root folder)
+const buildPath = path.join(__dirname, '..', 'dist');
+
 app.use(express.static(buildPath));
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(buildPath, 'index.html'));
 });
-
 
 // -------------------------------------------------
 // 5. **Seed logo on server start** (idempotent)
