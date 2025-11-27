@@ -3,9 +3,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
-
 require('dotenv').config();
+
 const app = express();
 
 // ---- static folder (so /logo.png works directly) ----
@@ -25,61 +24,88 @@ app.use('/api/quotations', require('./routes/quotations'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/settings', require('./routes/settings'));
 
-
-// example API route
+// Example API route
 app.get('/api/ping', (req, res) => res.json({ ok: true }));
 
 // -------------------------------------------------
-// Serve static frontend build **UPDATED**
-// Your build output is in /dist (root folder)
+// Serve static frontend build - CORRECTED PATH
+// Build files are in /dist (same level as backend folder)
 const buildPath = path.join(__dirname, '..', 'dist');
 
-app.use(express.static(buildPath));
-
-app.get('*', (req, res) => {
-  res.sendFile(path.join(buildPath, 'index.html'));
-});
+// Check if build directory exists
+if (fs.existsSync(buildPath)) {
+  console.log('Build directory found at:', buildPath);
+  app.use(express.static(buildPath));
+  
+  // Serve React app for all other routes
+  app.get('*', (req, res) => {
+    const indexPath = path.join(buildPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({ error: 'Frontend build not found' });
+    }
+  });
+} else {
+  console.log('Build directory not found at:', buildPath);
+  // Fallback for development or if build fails
+  app.get('*', (req, res) => {
+    res.json({ 
+      message: 'Backend is running, but frontend build not found',
+      buildPath: buildPath 
+    });
+  });
+}
 
 // -------------------------------------------------
-// 5. **Seed logo on server start** (idempotent)
+// Seed logo on server start (idempotent)
 const seedLogo = async () => {
-  const Settings = require('./models/Settings');
-  const logoPath = path.join(__dirname, 'public', 'logo.png');
+  try {
+    const Settings = require('./models/Settings');
+    const logoPath = path.join(__dirname, 'public', 'logo.png');
 
-  if (!fs.existsSync(logoPath)) {
-    console.warn('Warning: logo.png not found in /public – skipping seed');
-    return;
+    if (!fs.existsSync(logoPath)) {
+      console.warn('Warning: logo.png not found in /public – skipping seed');
+      return;
+    }
+
+    const existing = await Settings.findOne();
+    if (existing?.logo) {
+      // already seeded
+      return;
+    }
+
+    const buffer = fs.readFileSync(logoPath);
+    const base64 = `data:image/png;base64,${buffer.toString('base64')}`;
+
+    if (existing) {
+      existing.logo = base64;
+      await existing.save();
+    } else {
+      await Settings.create({ logo: base64 });
+    }
+    console.log('Logo seeded into Settings collection');
+  } catch (error) {
+    console.error('Error seeding logo:', error);
   }
-
-  const existing = await Settings.findOne();
-  if (existing?.logo) {
-    // already seeded
-    return;
-  }
-
-  const buffer = fs.readFileSync(logoPath);
-  const base64 = `data:image/png;base64,${buffer.toString('base64')}`;
-
-  if (existing) {
-    existing.logo = base64;
-    await existing.save();
-  } else {
-    await Settings.create({ logo: base64 });
-  }
-  console.log('Logo seeded into Settings collection');
 };
 
 // -------------------------------------------------
+// MongoDB connection
 mongoose.connect(
-  process.env.MONGODB_URL || 'mongodb://localhost:27017/billing_system',
-  { useNewUrlParser: true, useUnifiedTopology: true }
+  process.env.MONGODB_URI || process.env.MONGODB_URL || 'mongodb://localhost:27017/billing_system',
+  { 
+    useNewUrlParser: true, 
+    useUnifiedTopology: true 
+  }
 )
 .then(() => {
   console.log('MongoDB Connected');
-  seedLogo();                 // <-- run once
+  seedLogo(); // Run logo seeding once
 })
 .catch(err => console.error('MongoDB error:', err));
 
+// Test route
 app.get('/api/test', (req, res) => res.json({ message: 'Backend OK' }));
 
 const PORT = process.env.PORT || 5000;
