@@ -3,6 +3,7 @@ const router = express.Router();
 const Quotation = require('../models/Quotation');
 
 // Generate human-readable quotation number in format QT/YY-YY/NNN
+// Generate human-readable quotation number in format QT/YY-YY/NNN
 async function generateQuotationNumber() {
   const now = new Date();
   const year = now.getFullYear();
@@ -13,9 +14,23 @@ async function generateQuotationNumber() {
   } else {
     fy = `${(year - 1) % 100}-${year % 100}`;
   }
+  
+  // Find the highest existing number for this financial year
   const regex = new RegExp(`^QT/${fy}/`);
-  const count = await Quotation.countDocuments({ quotationNumber: regex });
-  return `QT/${fy}/${String(count + 1).padStart(3, '0')}`;
+  const lastQuotation = await Quotation.findOne({ 
+    quotationNumber: regex 
+  }).sort({ quotationNumber: -1 });
+  
+  let nextNumber = 1;
+  if (lastQuotation) {
+    // Extract the number part and increment
+    const lastNum = parseInt(lastQuotation.quotationNumber.split('/').pop());
+    nextNumber = lastNum + 1;
+  }
+  
+  // Pad with zeros to ensure 3 digits
+  const paddedNumber = String(nextNumber).padStart(3, '0');
+  return `QT/${fy}/${paddedNumber}`;
 }
 
 // GET all quotations
